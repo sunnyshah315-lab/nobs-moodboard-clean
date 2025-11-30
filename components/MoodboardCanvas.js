@@ -3,53 +3,33 @@ import { useEffect, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 
 /**
- * Lightweight moodboard canvas:
- * - left: inputs + generate button
- * - right: moodboard preview canvas (palette + draggable cards)
- * - export PNG
+ * MoodboardCanvas (visual-only)
  *
  * Props:
- * - onGenerate(form) -> calls parent to call API and return { palette, rationale, products }
+ *  - result: the latest AI output { palette, rationale, products }
+ *  - initialItems (optional): seed items
+ *
+ * The component does NOT accept onGenerate or show any input controls.
  */
-export default function MoodboardCanvas({ onGenerate, initialForm }) {
-  const [form, setForm] = useState(initialForm);
-  const [result, setResult] = useState(null);
-  const [loading, setLoading] = useState(false);
-
-  // draggable items state
-  const [items, setItems] = useState([]);
+export default function MoodboardCanvas({ result, initialItems = [] }) {
+  const [items, setItems] = useState(initialItems || []);
   const [dragging, setDragging] = useState(null);
   const boardRef = useRef();
 
   useEffect(() => {
-    // seed an empty base item
-    setItems([]);
-  }, []);
-
-  async function handleGenerate(e) {
-    e?.preventDefault();
-    setLoading(true);
-    setResult(null);
-    try {
-      const res = await onGenerate(form);
-      setResult(res);
-      // create initial cards from products
-      const newItems = (res.products || []).slice(0,6).map((p, i) => ({
-        id: `p-${i}`,
-        x: 20 + i*30,
-        y: 40 + (i%3)*40,
-        w: 200,
-        h: 80,
+    // When a new AI result arrives, seed the canvas with product cards
+    if (result && Array.isArray(result.products)) {
+      const newItems = result.products.slice(0, 6).map((p, i) => ({
+        id: `p-${Date.now()}-${i}`,
+        x: 20 + i * 30,
+        y: 40 + (i % 3) * 60,
+        w: 220,
+        h: 90,
         title: p
       }));
       setItems(newItems);
-    } catch (err) {
-      console.error(err);
-      alert("Failed to generate — check console.");
-    } finally {
-      setLoading(false);
     }
-  }
+  }, [result]);
 
   function onMouseDown(e, id) {
     const rect = boardRef.current.getBoundingClientRect();
@@ -75,8 +55,8 @@ export default function MoodboardCanvas({ onGenerate, initialForm }) {
       id: `t-${Date.now()}`,
       x: 30,
       y: 30,
-      w: 220,
-      h: 70,
+      w: 240,
+      h: 80,
       title: "New note"
     }]);
   }
@@ -92,71 +72,26 @@ export default function MoodboardCanvas({ onGenerate, initialForm }) {
   }
 
   return (
-    <div className="grid md:grid-cols-2 gap-6">
-      <form onSubmit={handleGenerate} className="p-4 bg-white rounded shadow-sm">
-        <h3 className="font-semibold text-lg mb-3">Moodboard Inputs</h3>
-
-        <label className="block text-sm">Target market</label>
-        <select value={form.target_market} onChange={(e)=>setForm({...form,target_market:e.target.value})} className="mt-1 mb-3 w-full border p-2 rounded">
-          <option>EU</option><option>US</option><option>UK</option><option>Australia</option>
-        </select>
-
-        <label className="block text-sm">Aesthetic</label>
-        <select value={form.aesthetic} onChange={(e)=>setForm({...form,aesthetic:e.target.value})} className="mt-1 mb-3 w-full border p-2 rounded">
-          <option>Scandinavian</option><option>Minimalist</option><option>Boho</option><option>Rustic</option>
-        </select>
-
-        <label className="block text-sm">Category</label>
-        <input value={form.category} onChange={(e)=>setForm({...form,category:e.target.value})} className="mt-1 mb-3 w-full border p-2 rounded" />
-
-        <label className="block text-sm">Materials</label>
-        <input value={form.materials} onChange={(e)=>setForm({...form,materials:e.target.value})} className="mt-1 mb-3 w-full border p-2 rounded" />
-
-        <label className="block text-sm">Price tier</label>
-        <select value={form.price_tier} onChange={(e)=>setForm({...form,price_tier:e.target.value})} className="mt-1 mb-3 w-full border p-2 rounded">
-          <option>Mid</option><option>Highstreet</option><option>Premium</option>
-        </select>
-
-        <label className="block text-sm">Notes</label>
-        <textarea value={form.prompt} onChange={(e)=>setForm({...form,prompt:e.target.value})} className="mt-1 mb-3 w-full border p-2 rounded" rows={3} />
-
-        <div className="flex gap-2">
-          <button type="submit" disabled={loading} className="px-4 py-2 bg-slate-800 text-white rounded">
-            {loading ? "Generating..." : "Generate Moodboard"}
-          </button>
-          <button type="button" onClick={addTextCard} className="px-3 py-2 border rounded">Add note</button>
-          <button type="button" onClick={exportPNG} className="px-3 py-2 border rounded">Export PNG</button>
+    <div onMouseMove={onMouseMove} onMouseUp={onMouseUp}>
+      <div className="p-4 bg-white rounded shadow-sm mb-3">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <div className="font-semibold">Moodboard Preview</div>
+            <div className="text-xs text-gray-500">Drag cards to arrange. Use Export to download PNG.</div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={addTextCard} className="px-3 py-2 border rounded">Add note</button>
+            <button onClick={exportPNG} className="px-3 py-2 border rounded">Export PNG</button>
+          </div>
         </div>
 
-        {result && (
-          <div className="mt-4 text-sm">
-            <div className="font-semibold">Rationale</div>
-            <div className="mt-2 whitespace-pre-wrap">{result.rationale}</div>
-            <div className="font-semibold mt-3">Palette</div>
-            <div className="flex gap-2 mt-2">
-              {(result.palette||[]).map((c,i)=>(
-                <div key={i} className="flex items-center gap-2">
-                  <div style={{ background: c }} className="w-10 h-10 rounded border"></div>
-                  <div className="text-xs">{c}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </form>
-
-      <div
-        onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
-        className="p-4 bg-white rounded shadow-sm"
-      >
         <div ref={boardRef} className="relative bg-gray-50 rounded p-4" style={{ minHeight: 520 }}>
-          {/* Palette */}
+          {/* Palette preview */}
           <div className="flex gap-3 items-center mb-4">
             {(result?.palette||[]).map((c,i)=>(
               <div key={i} style={{ background:c }} className="w-14 h-14 rounded border"></div>
             ))}
-            <div className="ml-4 text-sm">Preview</div>
+            <div className="ml-4 text-sm">Palette</div>
           </div>
 
           {/* Draggable items */}
@@ -181,17 +116,19 @@ export default function MoodboardCanvas({ onGenerate, initialForm }) {
             </div>
           ))}
 
-          {/* If no items show placeholder */}
           {items.length === 0 && (
-            <div className="text-gray-400">No items yet — generate a moodboard to populate product ideas.</div>
+            <div className="text-gray-400">No items yet — generate a moodboard from the buyer inputs to populate product ideas.</div>
           )}
         </div>
-
-        {/* Small tips */}
-        <div className="mt-3 text-xs text-gray-500">
-          Drag cards to arrange. Export PNG to download the current canvas.
-        </div>
       </div>
+
+      {/* Rationale preview (collapsed) */}
+      {result?.rationale && (
+        <div className="bg-white p-4 rounded shadow-sm text-sm">
+          <div className="font-semibold mb-2">Rationale</div>
+          <div className="whitespace-pre-wrap text-gray-700">{result.rationale}</div>
+        </div>
+      )}
     </div>
   );
 }
